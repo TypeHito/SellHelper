@@ -1,36 +1,37 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import sqlite3
-
+from src import const
 
 # Настройка базы данных
 conn = sqlite3.connect('shop.db')
 cursor = conn.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS products 
-                  (id INTEGER PRIMARY KEY, name TEXT,  img TEXT, description TEXT)''')
+                  (id INTEGER PRIMARY KEY, name TEXT,  img TEXT)''')
 conn.commit()
+
 
 # Конфигурация бота
 app = Client(
     "my_shop_bot",
-    bot_token="YOUR_BOT_TOKEN",  # Замени на свой токен от @BotFather
-    api_id=12345,  # Получи на my.telegram.org
-    api_hash="your_api_hash"  # Получи там же
+    bot_token=const.BOT_TOKEN,
+    api_id=const.API_ID,
+    api_hash=const.API_HASH
 )
 
 
 # Обработчик команды /add
-@app.on_message(filters.command("add") & filters.group)
+@app.on_message(filters.command("add") & filters.private)
 async def add_product(client: Client, message: Message):
-    args = message.text.split(" ", 1)[1] if len(message.text.split()) > 1 else None
-    if args and "|" in args:
-        name, description = args.split("|", 1)
-        cursor.execute("INSERT INTO products (name, description) VALUES (?, ?)",
-                       (name.strip(), description.strip()))
-        conn.commit()
-        await message.reply("✅ Товар успешно добавлен!")
-    else:
-        await message.reply("❌ Используйте: `/add Название | Описание`", parse_mode="Markdown")
+    print(message)
+    # args, name = message.text.split(" ", 1)
+    # if name:
+    #     cursor.execute("INSERT INTO products (name, img) VALUES (?, ?)",
+    #                    (name.strip(), img))
+    #     conn.commit()
+    #     await message.reply("✅ Товар успешно добавлен!")
+    # else:
+    #     await message.reply("❌ Используйте: `/add Название | Описание`", parse_mode="Markdown")
 
 
 # Обработчик команды /search (ищет товар и отправляет в ЛС)
@@ -49,13 +50,12 @@ async def search_product(client: Client, message: Message):
             await client.send_message(
                 message.from_user.id,  # Отправляем в личку
                 f"**🔍 {product[1]}**\n\n{product[2]}",
-                parse_mode="Markdown"
             )
-        await message.reply("✅ Результаты отправлены в личные сообщения!")
+        await message.reply(f"✅ {query} : Sizning lichkangizga yuborildi.")
     else:
-        await message.reply("😢 Товар не найден")
+        await message.reply(f"😢 {query} : Topilmadi keyinroq xabar oling")
 
 
 if __name__ == "__main__":
-    print("Бот запущен!")
+    print("Bot has been started")
     app.run()
