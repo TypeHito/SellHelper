@@ -1,61 +1,111 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
-import sqlite3
+from src import const
+import re
+import asyncio
 
 
-# Настройка базы данных
-conn = sqlite3.connect('shop.db')
-cursor = conn.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS products 
-                  (id INTEGER PRIMARY KEY, name TEXT,  img TEXT, description TEXT)''')
-conn.commit()
+# base_chat = -1002126520443
+main_chat = -1001133580711
+base_chat = -1002552659808 # dev
+# main_chat = -1001667858531 #dev
 
-# Конфигурация бота
+
+TypeHito = 5754619101
+main_admin = 452377448
+
+
+admins = [TypeHito, main_admin]
+
+
+fiter = ["bormi", "борми", "kerak", "керак", "bomi", "боми"]
+
+
 app = Client(
-    "my_shop_bot",
-    bot_token="YOUR_BOT_TOKEN",  # Замени на свой токен от @BotFather
-    api_id=12345,  # Получи на my.telegram.org
-    api_hash="your_api_hash"  # Получи там же
+    const.SESSION_NAME,
+    api_id=const.API_ID,
+    api_hash=const.API_HASH
 )
 
 
-# Обработчик команды /add
-@app.on_message(filters.command("add") & filters.group)
-async def add_product(client: Client, message: Message):
-    args = message.text.split(" ", 1)[1] if len(message.text.split()) > 1 else None
-    if args and "|" in args:
-        name, description = args.split("|", 1)
-        cursor.execute("INSERT INTO products (name, description) VALUES (?, ?)",
-                       (name.strip(), description.strip()))
-        conn.commit()
-        await message.reply("✅ Товар успешно добавлен!")
-    else:
-        await message.reply("❌ Используйте: `/add Название | Описание`", parse_mode="Markdown")
+def clean_text(text):
+    new_text = text
+    for rgx_match in fiter:
+        new_text = re.sub(rgx_match, '', new_text)
+    return new_text
 
 
-# Обработчик команды /search (ищет товар и отправляет в ЛС)
-@app.on_message(filters.command("search") & filters.group)
-async def search_product(client: Client, message: Message):
-    query = message.text.split(" ", 1)[1] if len(message.text.split()) > 1 else None
-    if not query:
-        await message.reply("❌ Укажите название товара: `/search Название`", parse_mode="Markdown")
-        return
+def match_text(text):
+    for rgx_match in fiter:
+        match = re.search(rgx_match, text)
+        if match:
+            return True
+    return False
 
-    cursor.execute("SELECT * FROM products WHERE name LIKE ?", (f"%{query}%",))
-    products = cursor.fetchall()
 
+def get_price(text):
+    price = str(text).split("@")[1]
+    if price:
+        return price
+
+
+async def match_get_products(client, message):
+    text = str(message.text).lower()
+    if match_text(text):
+        products = await get_products(client, message)
+        return products
+
+
+async def get_products(client, message):
+    text = str(message.text).lower()
+    query = clean_text(text)
+    products = []
+    async for msg in client.search_messages(base_chat, query):
+        products.append(msg.id)
+    return products
+
+def is_target_chat(chat_id):
+    # return chat_id == chat_id
+    return chat_id == main_chat and chat_id != base_chat
+
+
+async def forward_products(client: Client, message: Message, products, user_id=None):
     if products:
+        user_id = user_id if user_id else message.from_user.id
         for product in products:
-            await client.send_message(
-                message.from_user.id,  # Отправляем в личку
-                f"**🔍 {product[1]}**\n\n{product[2]}",
-                parse_mode="Markdown"
-            )
-        await message.reply("✅ Результаты отправлены в личные сообщения!")
+            try:
+                await client.copy_media_group(user_id, base_chat, product)
+            except ValueError:
+                await client.forward_messages(user_id, base_chat, product)
+
+        reply_message = await message.reply(f"✅ Barcha ''{message.text}'' lichkezga (@mainAdmin23) yuborildi")
     else:
-        await message.reply("😢 Товар не найден")
+        reply_message = await message.reply(f"Iltimos maxsulot nomini tekshirib yozing! "
+                            f"\n'maxsulit nomi' bormi "
+                            f"\n'mahsulot nomi' kerak")
+    await asyncio.sleep(10)
+    await reply_message.delete()
+
+@app.on_message(filters.reply & filters.group)
+async def reply_products(client: Client, message: Message):
+    print(message.chat.id)
+    print("ww")
+    if is_target_chat(message.chat.id):
+        products = await get_products(client, message)
+        await forward_products(client, message, products, message.reply_to_message.from_user.id)
+        await message.delete()
+
+
+@app.on_message(filters.group & filters.text)
+async def search_products(client: Client, message: Message):
+    print(message.chat.id)
+    print("ww")
+    if is_target_chat(message.chat.id):
+        products = await match_get_products(client, message)
+        await forward_products(client, message, products)
 
 
 if __name__ == "__main__":
-    print("Бот запущен!")
+    print("Bot has been started...")
     app.run()
+    print("Bot has been STOPED...")
